@@ -32,6 +32,8 @@ def write_private(path, value):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
             f.write(value)
+            f.flush()
+            os.fsync(f.fileno())
         os.chmod(tmp, 0o600)
         os.replace(tmp, path)
     finally:
@@ -177,7 +179,6 @@ def sub_setup(root):
     token = secrets.token_urlsafe(32)
     # Paths, not private-key contents, in config. Serve reads certs before dropping UID.
     write_private(root / 'subscription.json', json.dumps(dict(domain=domain, port=port, token=token, cert=str(cert), key=str(key))))
-    sub_urls(root)
 
 
 def sub_urls(root):

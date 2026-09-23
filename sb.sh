@@ -61,14 +61,19 @@ fi
 hostname=$(hostname)
 
 secure_dependencies(){
+local curl_package=curl coreutils_package=coreutils
+if command -v rpm >/dev/null; then
+    rpm -q curl-minimal >/dev/null 2>&1 && curl_package=curl-minimal
+    rpm -q coreutils-single >/dev/null 2>&1 && coreutils_package=coreutils-single
+fi
 if command -v apk >/dev/null; then
     apk add dcron openrc bash ca-certificates curl jq openssl procps iproute2 iputils coreutils python3 git socat iptables grep tar tzdata util-linux logrotate
 elif command -v apt-get >/dev/null; then
     apt-get update && apt-get install -y ca-certificates curl jq openssl cron procps iproute2 coreutils python3 git socat iptables tar util-linux logrotate
 elif command -v dnf >/dev/null; then
-    dnf install -y ca-certificates curl jq openssl cronie procps-ng iproute coreutils python3 git socat iptables tar util-linux logrotate
+    dnf install -y ca-certificates "$curl_package" jq openssl cronie procps-ng iproute "$coreutils_package" python3 git socat iptables tar util-linux logrotate
 elif command -v yum >/dev/null; then
-    yum install -y ca-certificates curl jq openssl cronie procps-ng iproute coreutils python3 git socat iptables tar util-linux logrotate
+    yum install -y ca-certificates "$curl_package" jq openssl cronie procps-ng iproute "$coreutils_package" python3 git socat iptables tar util-linux logrotate
 else
     red "不支持的包管理器；请手动安装依赖。"; return 1
 fi
@@ -308,7 +313,7 @@ cat > /etc/s-box/sb10.json <<EOF
 {
 "log": {
     "disabled": false,
-    "level": "info",
+    "level": "warn",
     "timestamp": true
   },
   "inbounds": [
@@ -552,7 +557,7 @@ cat > /etc/s-box/sb11.json <<EOF
 {
 "log": {
     "disabled": false,
-    "level": "info",
+    "level": "warn",
     "timestamp": true
   },
   "inbounds": [
@@ -1149,7 +1154,7 @@ sball(){
 cat <<EOF
 {
   "log": {
-    "level": "info",
+    "level": "warn",
     "timestamp": true
   },
   "http_clients": [
@@ -1393,7 +1398,7 @@ cat <<EOF
 port: 7890
 allow-lan: false
 mode: rule
-log-level: info
+log-level: warning
 unified-delay: true
 dns:
   enable: true 
@@ -2326,8 +2331,18 @@ short_id=$(/etc/s-box/sing-box generate rand --hex 4)
 curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 -o /etc/s-box/geoip.db https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.db || return 1
 curl -fLsS --proto '=https' --proto-redir '=https' --max-time 60 -o /etc/s-box/geosite.db https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.db || return 1
 red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-green "五、自动生成warp-wireguard出站账户" && sleep 2
-warpwg || return 1
+green "五、可选 WARP 出站（不影响主代理入站）"
+readp "现在注册 WARP 账户？需要连接外部服务 [y/N]：" warp_choice
+if [[ $warp_choice == [yY] ]]; then
+    warpwg || return 1
+else
+    # Unique inactive credentials preserve legacy template layout; routing menu stays locked.
+    pvk=$(openssl rand -base64 32) || return 1
+    v6='fd00::2'
+    res='[0,0,0]'
+    touch /etc/s-box/warp-disabled
+    yellow "已跳过 WARP 注册；常规代理仍可使用。需要时在账户菜单启用。"
+fi
 inssbjsonser
 /etc/s-box/sing-box check -D /etc/s-box -c /etc/s-box/sb.json || return 1
 sbservice || return 1
@@ -2861,10 +2876,8 @@ fi
 ipsub(){
 readp "HTTPS 订阅：1=设置/更换证书与令牌，2=停用，0=返回：" menu
 case "$menu" in
-1) python3 /etc/s-box/secure.py sub-setup || return 1
-   sbshare >/dev/null || return 1
-   secure_subscription_service || return 1
-   python3 /etc/s-box/secure.py sub-urls;;
+1) sbshare >/dev/null || return 1
+   secure_subscription_setup;;
 2) if command -v systemctl >/dev/null; then systemctl disable --now sing-box-secure-sub; else rc-service sing-box-secure-sub stop; rc-update del sing-box-secure-sub; fi;;
 esac
 }
@@ -2977,21 +2990,28 @@ if [ "$menu" = "1" ]; then
 green "最新随机生成普通warp-wireguard账户如下"
 warpwg || return 1
 echo
-readp "输入自定义Private_key：" menu
+read -r -s -p "自定义 Private_key（回车使用刚生成的账户）: " menu
+echo
+menu=${menu:-$pvk}
+[[ $menu =~ ^[A-Za-z0-9+/]{43}=$ ]] || { red "WireGuard 私钥格式错误"; return 1; }
 sed -i "163s#$wgprkey#$menu#g" /etc/s-box/sb10.json
 sed -i "132s#$wgprkey#$menu#g" /etc/s-box/sb11.json
-readp "输入自定义IPV6地址：" menu
+readp "自定义 IPV6（回车使用刚生成的账户）: " menu
+menu=${menu:-$v6}
+python3 -c 'import ipaddress,sys; ipaddress.IPv6Address(sys.argv[1])' "$menu" || return 1
 sed -i "161s/$wgipv6/$menu/g" /etc/s-box/sb10.json
 sed -i "130s/$wgipv6/$menu/g" /etc/s-box/sb11.json
 readp "输入自定义Reserved值 (格式：数字,数字,数字)，如无值则回车跳过：" menu
 if [ -z "$menu" ]; then
-menu=0,0,0
+menu=${res:1:-1}
 fi
+python3 -c 'import sys; v=sys.argv[1].split(","); assert len(v)==3 and all(x.isdecimal() and 0<=int(x)<=255 for x in v)' "$menu" || return 1
 sed -i "165s/$wgres/$menu/g" /etc/s-box/sb10.json
 sed -i "142s/$wgres/$menu/g" /etc/s-box/sb11.json
 rm -rf /etc/s-box/sb.json
 cp /etc/s-box/sb${num}.json /etc/s-box/sb.json
-restartsb
+restartsb || return 1
+rm -f /etc/s-box/warp-disabled
 green "设置结束"
 else
 changeserv
@@ -3111,7 +3131,7 @@ changefl(){
 sbactive
 blue "对所有协议进行统一的域名分流"
 blue "为确保分流可用，双栈IP（IPV4/IPV6）分流模式为优先模式"
-blue "warp-wireguard默认开启 (选项1与2)"
+blue "warp-wireguard需先注册有效账户 (选项1与2)"
 blue "socks5需要在VPS安装warp官方客户端或者WARP-plus-Socks5-赛风VPN (选项3与4)"
 blue "VPS本地出站分流(选项5与6)"
 echo
@@ -3140,6 +3160,9 @@ green "0：返回上层"
 echo
 readp "请选择：" menu
 
+if [[ -f /etc/s-box/warp-disabled && ( $menu == 1 || $menu == 2 ) ]]; then
+    red "WARP 尚未启用，请先通过账户菜单注册。未修改分流。"; return 1
+fi
 if [ "$menu" = "1" ]; then
 if [[ "$sbnh" == "1.10" ]]; then
 readp "1：使用后缀域名方式\n2：使用geosite方式\n3：返回上层\n请选择：" menu
@@ -3454,7 +3477,9 @@ secure_core "$upcore" || return 1
 [[ "$sbnh" == 1.10 ]] && num=10 || num=11
 cp "/etc/s-box/sb$num.json" /etc/s-box/sb.json
 if ! restartsb; then
-    cp /etc/s-box/sing-box.previous /etc/s-box/sing-box
+    rollback_binary=$(mktemp /etc/s-box/.rollback.XXXXXX) || return 1
+    cp /etc/s-box/sing-box.previous "$rollback_binary" && chmod 700 "$rollback_binary" && mv -f -- "$rollback_binary" /etc/s-box/sing-box || return 1
+    sbnh=$(/etc/s-box/sing-box version | awk '/version/{print $NF}' | cut -d . -f 1,2)
     cp /etc/s-box/sb.before-upgrade.json /etc/s-box/sb.json
     restartsb
     red "更新失败，已尝试恢复旧内核和配置。"
@@ -3713,7 +3738,7 @@ x86_64) cpu=amd64;;
 esac
 secure_warp_binary || return 1
 fi
-secure_stop_binary /etc/s-box/sbwpph
+secure_warp_stop
 v4v6
 if [[ -n $v4 ]]; then
 sw46=4
@@ -3752,7 +3777,7 @@ yellow "3：停止WARP-plus-Socks5代理模式"
 yellow "0：返回上层"
 readp "请选择【0-3】：" menu
 if [ "$menu" = "1" ]; then
-ins
+ins || return 1
 secure_warp_service "$port" "$sw46" || return 1
 green "申请IP中……请稍等……" && sleep 20
 resv1=$(curl -sm3 --socks5 localhost:$port https://icanhazip.com)
@@ -3765,7 +3790,7 @@ aplws5
 green "WARP-plus-Socks5的IP获取成功，可进行Socks5代理分流"
 fi
 elif [ "$menu" = "2" ]; then
-ins
+ins || return 1
 echo '
 奥地利（AT）
 澳大利亚（AU）

@@ -9,10 +9,12 @@ import re
 import shutil
 import shlex
 import ssl
+import socket
 import string
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -117,6 +119,28 @@ class SecurityTests(unittest.TestCase):
                 config.write_text(json.dumps(data))
                 check = subprocess.run([checker, 'check', '-D', str(self.root), '-c', str(config)], capture_output=True, text=True, timeout=60)
                 self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+                # check alone does not prove initialization/listeners work.
+                if name == 'sb11.json':
+                    with open(self.root / 'server-test.log', 'w+') as log:
+                        proc = subprocess.Popen([checker, 'run', '-D', str(self.root), '-c', str(config)], stdout=log, stderr=log)
+                        try:
+                            for _ in range(100):
+                                if proc.poll() is not None:
+                                    break
+                                try:
+                                    with socket.create_connection(('127.0.0.1', int(values['port_an'])), timeout=.1):
+                                        break
+                                except OSError:
+                                    time.sleep(.05)
+                            log.flush()
+                            log.seek(0)
+                            self.assertIsNone(proc.poll(), log.read())
+                            with socket.create_connection(('127.0.0.1', int(values['port_an'])), timeout=1):
+                                pass
+                        finally:
+                            if proc.poll() is None:
+                                proc.terminate()
+                                proc.wait(timeout=10)
 
     def test_actual_client_template_branches(self):
         bash = os.environ.get('BASH_TEST') or shutil.which('bash')

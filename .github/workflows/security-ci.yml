@@ -39,6 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'docker logs --tail=100 sb-security 2>&1 || true' ERR
           docker build --build-arg TARGETARCH=amd64 -t sb-security-test .
           docker volume create sb-security-data
           docker run -d --name sb-security --cap-drop=ALL --security-opt no-new-privileges:true --read-only --tmpfs /tmp -e PUBLIC_HOST=127.0.0.1 -v sb-security-data:/data sb-security-test
@@ -54,6 +55,11 @@ jobs:
           after=$(docker exec sb-security sha256sum /data/portable-state.json)
           test "$before" = "$after"
           docker stop -t 15 sb-security
+      - name: Container failure diagnostics
+        if: failure()
+        run: |
+          docker logs --tail=100 sb-security 2>&1 || true
+          docker inspect -f '{{json .State}}' sb-security || true
   distro-dependencies:
     runs-on: ubuntu-latest
     timeout-minutes: 15

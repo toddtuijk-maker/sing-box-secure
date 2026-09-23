@@ -140,6 +140,35 @@ UNIT
         chmod 700 /etc/init.d/sing-box-secure-sub
         rc-update add sing-box-secure-sub default && rc-service sing-box-secure-sub restart
     fi
+    sleep 2
+    if command -v systemctl >/dev/null; then
+        systemctl is-active --quiet sing-box-secure-sub
+    else
+        rc-service sing-box-secure-sub status >/dev/null
+    fi
+}
+
+secure_subscription_setup() {
+    local backup
+    backup=$(mktemp /etc/s-box/.subscription.XXXXXX) || return 1
+    if [[ -s /etc/s-box/subscription.json ]]; then
+        cp /etc/s-box/subscription.json "$backup" || { rm -f -- "$backup"; return 1; }
+    fi
+    if ! python3 /etc/s-box/secure.py sub-setup; then rm -f -- "$backup"; return 1; fi
+    if ! secure_subscription_service; then
+        if [[ -s $backup ]]; then
+            mv -f -- "$backup" /etc/s-box/subscription.json
+            secure_subscription_service || true
+        else
+            rm -f /etc/s-box/subscription.json "$backup"
+            if command -v systemctl >/dev/null; then systemctl disable --now sing-box-secure-sub;
+            else rc-service sing-box-secure-sub stop; rc-update del sing-box-secure-sub; fi
+        fi
+        echo 'Subscription failed to start; previous settings restored.' >&2
+        return 1
+    fi
+    rm -f -- "$backup"
+    python3 /etc/s-box/secure.py sub-urls
 }
 
 secure_nat_cleanup() {
