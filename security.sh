@@ -35,10 +35,12 @@ secure_release() {
 }
 
 secure_core() {
-    local version=$1 stage candidate config digest asset
+    local version=$1 stage candidate config digest asset flavor=$cpu
     [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9.-]+)?$ ]] || return 1
     stage=$(mktemp -d /etc/s-box/.core.XXXXXX) || return 1
-    asset="sing-box-$version-linux-$cpu.tar.gz"
+    # Official static musl builds avoid the glibc loader requirement on Alpine.
+    [[ $version == 1.10.* ]] || flavor="$cpu-musl"
+    asset="sing-box-$version-linux-$flavor.tar.gz"
     if [[ $version == 1.10.7 ]]; then
         # Historical release had no GitHub digest. Pinned HTTPS snapshot, 2026-09-23.
         case $cpu in
@@ -50,9 +52,9 @@ secure_core() {
         secure_download "https://github.com/SagerNet/sing-box/releases/download/v$version/$asset" "$stage/core.tar.gz" "$digest" || { rm -rf -- "$stage"; return 1; }
     elif [[ $version == 1.14.1 ]]; then
         case $cpu in
-            amd64) digest=12cb2816b52febb356f6a885b740cc8758c3f30b8ae0ca8edba80f0d2d35343f;;
-            arm64) digest=6060b42fa84c5dcaeae1799af7f61b0f1ae4855d9d5ddc9e02baba17154b3ae2;;
-            armv7) digest=f2c8af2e3576f40f8ab0d06e1d44840e4eb6bcf410ba8d42381781cb0d6fe41b;;
+            amd64) digest=b907365b154e4a7e3e40be15c2cd83433c0fa65c7dc736bdb1b5face2afe4501;;
+            arm64) digest=d94fc9704372ca2fa2854e54c20b406e4b8779b5ccdd0c557da90ea9344e9631;;
+            armv7) digest=4004839c33cd5fb4fcb0b771bd37b59661973c1635c674bd6c46a59a7415d4d5;;
             *) rmdir "$stage"; return 1;;
         esac
         secure_download "https://github.com/SagerNet/sing-box/releases/download/v$version/$asset" "$stage/core.tar.gz" "$digest" || { rm -rf -- "$stage"; return 1; }
@@ -60,8 +62,9 @@ secure_core() {
         secure_release SagerNet/sing-box "v$version" "$asset" "$stage/core.tar.gz" || { rm -rf -- "$stage"; return 1; }
     fi
     candidate="$stage/sing-box"
-    tar xzf "$stage/core.tar.gz" -O "sing-box-$version-linux-$cpu/sing-box" > "$candidate" || { rm -rf -- "$stage"; return 1; }
+    tar xzf "$stage/core.tar.gz" -O "sing-box-$version-linux-$flavor/sing-box" > "$candidate" || { rm -rf -- "$stage"; return 1; }
     chmod 700 "$candidate"
+    "$candidate" version >/dev/null || { rm -rf -- "$stage"; echo 'Core cannot run on this OS; current binary retained.' >&2; return 1; }
     [[ $version == 1.10.* ]] && config=/etc/s-box/sb10.json || config=/etc/s-box/sb11.json
     if [[ -s $config ]] && ! "$candidate" check -D /etc/s-box -c "$config"; then
         rm -rf -- "$stage"; echo 'New core rejected the configuration; current core retained.' >&2; return 1

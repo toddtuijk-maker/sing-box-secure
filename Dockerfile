@@ -6,15 +6,15 @@ RUN apk add --no-cache ca-certificates curl python3 openssl tzdata \
     && mkdir /data && chown sb:sb /data
 RUN set -eu; \
     case "$TARGETARCH" in \
-      amd64) digest=12cb2816b52febb356f6a885b740cc8758c3f30b8ae0ca8edba80f0d2d35343f;; \
-      arm64) digest=6060b42fa84c5dcaeae1799af7f61b0f1ae4855d9d5ddc9e02baba17154b3ae2;; \
+      amd64) digest=b907365b154e4a7e3e40be15c2cd83433c0fa65c7dc736bdb1b5face2afe4501;; \
+      arm64) digest=d94fc9704372ca2fa2854e54c20b406e4b8779b5ccdd0c557da90ea9344e9631;; \
       *) echo 'Only amd64/arm64 supported by this container'; exit 1;; \
     esac; \
     curl -fLsS --proto '=https' --proto-redir '=https' --retry 2 --max-time 300 \
-      "https://github.com/SagerNet/sing-box/releases/download/v1.14.1/sing-box-1.14.1-linux-$TARGETARCH.tar.gz" -o /tmp/core.tgz; \
+      "https://github.com/SagerNet/sing-box/releases/download/v1.14.1/sing-box-1.14.1-linux-$TARGETARCH-musl.tar.gz" -o /tmp/core.tgz; \
     echo "$digest  /tmp/core.tgz" | sha256sum -c -; \
-    tar xzf /tmp/core.tgz -O "sing-box-1.14.1-linux-$TARGETARCH/sing-box" > /usr/local/bin/sing-box; \
-    chmod 755 /usr/local/bin/sing-box; rm /tmp/core.tgz
+    tar xzf /tmp/core.tgz -O "sing-box-1.14.1-linux-$TARGETARCH-musl/sing-box" > /usr/local/bin/sing-box; \
+    chmod 755 /usr/local/bin/sing-box; /usr/local/bin/sing-box version; rm /tmp/core.tgz
 WORKDIR /app
 COPY secure.py portable.py ./
 USER 10001:10001

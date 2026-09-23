@@ -99,14 +99,26 @@ class PortableTests(unittest.TestCase):
                     try:
                         ready(int(env['ANYTLS_PORT']), server)
                         outbounds = json.loads((root / 'sbox.json').read_text())['outbounds']
+                        candidates = []
+                        mihomo = json.loads((root / 'clmi.yaml').read_text())
                         for outbound in outbounds:
                             if outbound['type'] in ('selector', 'direct') or outbound['tag'] == 'vless':
                                 continue  # Reality needs a real public handshake target; not faked here.
-                            with self.subTest(protocol=outbound['tag']):
+                            candidates.append(('sing-box', outbound['tag'], outbound))
+                            if os.environ.get('MIHOMO_CHECK'):
+                                proxy = next(p for p in mihomo['proxies'] if p['name'] == outbound['tag'])
+                                candidates.append(('mihomo', outbound['tag'], proxy))
+                        for engine, tag, proxy in candidates:
+                            with self.subTest(engine=engine, protocol=tag):
                                 port = free_port()
-                                config = {'log': {'level': 'warn'}, 'inbounds': [{'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': port}], 'outbounds': [outbound]}
+                                if engine == 'sing-box':
+                                    config = {'log': {'level': 'warn'}, 'inbounds': [{'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': port}], 'outbounds': [proxy]}
+                                    args = [binary, 'run', '-D', str(root), '-c', str(root / 'test-client.json')]
+                                else:
+                                    config = {'mixed-port': port, 'allow-lan': False, 'bind-address': '127.0.0.1', 'mode': 'rule', 'log-level': 'warning', 'proxies': [proxy], 'rules': ['MATCH,' + tag]}
+                                    args = [os.environ['MIHOMO_CHECK'], '-f', str(root / 'test-client.json'), '-d', str(root)]
                                 portable.write_private(root / 'test-client.json', json.dumps(config))
-                                client = subprocess.Popen([binary, 'run', '-D', str(root), '-c', str(root / 'test-client.json')], stdout=log, stderr=log)
+                                client = subprocess.Popen(args, stdout=log, stderr=log)
                                 processes.append(client)
                                 try:
                                     ready(port, client)
@@ -117,7 +129,7 @@ class PortableTests(unittest.TestCase):
                                             try:
                                                 part = connection.recv(4096)
                                             except ConnectionResetError:
-                                                break  # Some cores reset after completing a close-delimited response.
+                                                break  # A complete response can end with a reset on Windows.
                                             if not part:
                                                 break
                                             data += part
