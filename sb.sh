@@ -2331,7 +2331,7 @@ warpwg || return 1
 inssbjsonser
 /etc/s-box/sing-box check -D /etc/s-box -c /etc/s-box/sb.json || return 1
 sbservice || return 1
-cp /etc/s-box/sb.json /etc/s-box/sb.last-good.json
+for config in sb sb10 sb11; do cp "/etc/s-box/$config.json" "/etc/s-box/$config.last-good.json"; done
 sbactive
 printf '%s\n' '2026.09.23-security-preview' > /etc/s-box/v
 red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"

@@ -200,8 +200,9 @@ secure_certificate() {
         read -r -p 'Private-key PEM absolute path: ' key
     fi
     [[ $cert == /* && $key == /* && -s $cert && -s $key ]] || return 1
-    cert=$(readlink -f -- "$cert") || return 1
-    key=$(readlink -f -- "$key") || return 1
+    # Normalize without dereferencing live/ symlinks: Certbot retargets them on renewal.
+    cert=$(realpath -s -- "$cert") || return 1
+    key=$(realpath -s -- "$key") || return 1
     [[ $cert != /etc/s-box/certificates/cert.crt && $key != /etc/s-box/certificates/private.key ]] || return 1
     python3 - "$cert" "$key" <<'PY' || return 1
 import ssl, sys
