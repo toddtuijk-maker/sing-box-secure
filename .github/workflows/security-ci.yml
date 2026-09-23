@@ -46,11 +46,19 @@ jobs:
           trap 'docker logs --tail=100 sb-security 2>&1 || true' ERR
           docker build --build-arg TARGETARCH=amd64 -t sb-security-test .
           docker volume create sb-security-data
-          docker run -d --name sb-security --cap-drop=ALL --security-opt no-new-privileges:true --read-only --tmpfs /tmp -e PUBLIC_HOST=127.0.0.1 -v sb-security-data:/data sb-security-test
+          docker run -d --name sb-security --restart=unless-stopped --cap-drop=ALL --security-opt no-new-privileges:true --read-only --tmpfs /tmp -e PUBLIC_HOST=127.0.0.1 -v sb-security-data:/data sb-security-test
           sleep 12
           test "$(docker inspect -f '{{.State.Running}}' sb-security)" = true
           docker exec sb-security python3 -c 'import os; assert os.getuid()==10001; assert open("/data/sing-box.pid").read().isdigit()'
           before=$(docker exec sb-security sha256sum /data/portable-state.json)
+          docker exec sb-security python3 /app/portable.py --healthcheck
+          docker exec sb-security python3 -c 'import os,signal; os.kill(int(open("/data/sing-box.pid").read()), signal.SIGKILL)'
+          for i in {1..40}; do
+            sleep 0.5
+            if test "$(docker inspect -f '{{.RestartCount}}' sb-security)" -gt 0 && docker exec sb-security python3 /app/portable.py --healthcheck >/dev/null 2>&1; then break; fi
+          done
+          test "$(docker inspect -f '{{.RestartCount}}' sb-security)" -gt 0
+          docker exec sb-security python3 /app/portable.py --healthcheck
           docker stop -t 15 sb-security
           test "$(docker inspect -f '{{.State.ExitCode}}' sb-security)" = 0
           docker start sb-security
@@ -58,6 +66,7 @@ jobs:
           test "$(docker inspect -f '{{.State.Running}}' sb-security)" = true
           after=$(docker exec sb-security sha256sum /data/portable-state.json)
           test "$before" = "$after"
+          docker exec sb-security python3 /app/portable.py --healthcheck
           docker stop -t 15 sb-security
       - name: Container failure diagnostics
         if: failure()

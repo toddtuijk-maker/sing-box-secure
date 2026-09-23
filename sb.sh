@@ -77,6 +77,7 @@ elif command -v yum >/dev/null; then
 else
     red "不支持的包管理器；请手动安装依赖。"; return 1
 fi
+python3 -c 'import sys; assert sys.version_info >= (3, 9)' || { red "需要 Python 3.9+；请使用较新发行版或容器入口。"; return 1; }
 }
 
 v4v6(){

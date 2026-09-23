@@ -13,7 +13,7 @@ Linux VPS 安全加固与无 root 容器入口。GPL-3.0 衍生项目，来源�
 
 主脚本识别 Debian、Ubuntu、Alpine、Rocky、AlmaLinux、RHEL、CentOS Stream、Fedora，拒绝 CentOS/RHEL 7。
 CI 仅检查 Debian 12、Ubuntu 24.04、Rocky 9、Alpine 3.22 的依赖安装与语法，不代表各系统整机安装均已验收。
-VPS 下载支持 amd64/arm64/armv7；容器镜像支持 amd64/arm64，CI 运行 amd64。便携入口需要 Python 3.9+、OpenSSL、sing-box 1.14.1。
+VPS 下载支持 amd64/arm64/armv7；容器镜像支持 amd64/arm64，CI 运行 amd64。两个入口都需要 Python 3.9+；默认使用官方 1.14.1 静态 musl 内核，避免 Alpine 缺少 glibc 加载器。便携入口另需 OpenSSL。
 
 ## 协议选择
 
