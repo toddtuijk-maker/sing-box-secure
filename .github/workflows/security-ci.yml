@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -36,6 +39,7 @@ jobs:
           export MIHOMO_CHECK="$PWD/test-artifacts/mihomo"
           python3 -m unittest discover -s tests -v
       - name: Rootless container persistence and graceful stop
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail

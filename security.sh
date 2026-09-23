@@ -179,7 +179,7 @@ secure_nat_cleanup() {
     for tool in iptables ip6tables; do
         command -v "$tool" >/dev/null || continue
         # Only our own chain. Never flush shared PREROUTING or foreign rules.
-        while "$tool" -t nat -C PREROUTING -j SBSECURE 2>/dev/null; do "$tool" -t nat -D PREROUTING -j SBSECURE; done
+        while "$tool" -t nat -C PREROUTING -j SBSECURE 2>/dev/null; do "$tool" -t nat -D PREROUTING -j SBSECURE || break; done
         "$tool" -t nat -F SBSECURE 2>/dev/null || true
         "$tool" -t nat -X SBSECURE 2>/dev/null || true
     done
@@ -189,12 +189,15 @@ secure_nat_cleanup() {
 }
 
 secure_nat_init() {
-    local tool
+    local tool result=1
     for tool in iptables ip6tables; do
         command -v "$tool" >/dev/null || continue
         "$tool" -t nat -N SBSECURE 2>/dev/null || true
-        "$tool" -t nat -C PREROUTING -j SBSECURE 2>/dev/null || "$tool" -t nat -A PREROUTING -j SBSECURE
+        if "$tool" -t nat -C PREROUTING -j SBSECURE 2>/dev/null || "$tool" -t nat -A PREROUTING -j SBSECURE 2>/dev/null; then
+            result=0
+        fi
     done
+    return "$result"
 }
 
 secure_warp_binary() {

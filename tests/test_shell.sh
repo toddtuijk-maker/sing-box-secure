@@ -38,3 +38,11 @@ secure_cron_remove
 ! grep -q '# sing-box-secure$' "$test_dir/crontab"
 grep -q '15 2 .*backup-sing-box' "$test_dir/crontab"
 echo 'Download failure safety and cron isolation: PASS'
+
+# IPv6-unavailable hosts must still restore their owned IPv4 rules.
+iptables() { return 0; }
+ip6tables() { return 1; }
+secure_nat_init
+iptables() { return 1; }
+if secure_nat_init; then exit 1; fi
+echo 'IPv4-only NAT availability: PASS'

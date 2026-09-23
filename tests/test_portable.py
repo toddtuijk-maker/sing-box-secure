@@ -104,12 +104,18 @@ class PortableTests(unittest.TestCase):
                         for outbound in outbounds:
                             if outbound['type'] in ('selector', 'direct') or outbound['tag'] == 'vless':
                                 continue  # Reality needs a real public handshake target; not faked here.
-                            candidates.append(('sing-box', outbound['tag'], outbound))
+                            candidates.append(('sing-box', outbound['tag'], outbound, True))
+                            if outbound['tag'] == 'anytls':
+                                wrong = json.loads(json.dumps(outbound))
+                                wrong['tls']['server_name'] = 'wrong.invalid'
+                                candidates.append(('sing-box', outbound['tag'], wrong, False))
                             if os.environ.get('MIHOMO_CHECK'):
                                 proxy = next(p for p in mihomo['proxies'] if p['name'] == outbound['tag'])
-                                candidates.append(('mihomo', outbound['tag'], proxy))
-                        for engine, tag, proxy in candidates:
-                            with self.subTest(engine=engine, protocol=tag):
+                                candidates.append(('mihomo', outbound['tag'], proxy, True))
+                                if outbound['tag'] == 'anytls':
+                                    candidates.append(('mihomo', outbound['tag'], {**proxy, 'fingerprint': '0' * 64}, False))
+                        for engine, tag, proxy, expected in candidates:
+                            with self.subTest(engine=engine, protocol=tag, valid_certificate=expected):
                                 port = free_port()
                                 if engine == 'sing-box':
                                     config = {'log': {'level': 'warn'}, 'inbounds': [{'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': port}], 'outbounds': [proxy]}
@@ -123,7 +129,8 @@ class PortableTests(unittest.TestCase):
                                 try:
                                     ready(port, client)
                                     with socket.create_connection(('127.0.0.1', port), timeout=10) as connection:
-                                        connection.sendall(('GET http://127.0.0.1:' + str(http.server_port) + '/ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n').encode())
+                                        authority = '127.0.0.1:' + str(http.server_port)
+                                        connection.sendall(('GET http://' + authority + '/ HTTP/1.1\r\nHost: ' + authority + '\r\nConnection: close\r\n\r\n').encode())
                                         data = b''
                                         while True:
                                             try:
@@ -134,7 +141,11 @@ class PortableTests(unittest.TestCase):
                                                 break
                                             data += part
                                         log.flush()
-                                        self.assertIn(b'isolated-proxy-roundtrip-ok', data, (root / 'test.log').read_text()[-2000:])
+                                        if expected:
+                                            self.assertIn(b'isolated-proxy-roundtrip-ok', data, (root / 'test.log').read_text()[-2000:])
+                                        else:
+                                            self.assertIn(b'502', data)
+                                            self.assertNotIn(b'isolated-proxy-roundtrip-ok', data)
                                 finally:
                                     client.terminate()
                                     client.wait(timeout=10)
