@@ -1,0 +1,73 @@
+name: Linux security regression
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Download checksum-pinned test cores
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir test-artifacts
+          source security.sh
+          secure_download https://github.com/SagerNet/sing-box/releases/download/v1.14.1/sing-box-1.14.1-linux-amd64.tar.gz test-artifacts/core.tgz 12cb2816b52febb356f6a885b740cc8758c3f30b8ae0ca8edba80f0d2d35343f
+          secure_download https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-amd64.tar.gz test-artifacts/legacy.tgz 1951a0785c8b4e1e21e0640227a49528ca772aec3d680061652e3d6b687e00fe
+          secure_download https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-linux-amd64-compatible-v1.19.31.gz test-artifacts/mihomo.gz 04cf9f09671704f839ddbee2e93069dc831a4123a75281e725d1d96ab9ac1afc
+          tar xzf test-artifacts/core.tgz -C test-artifacts
+          tar xzf test-artifacts/legacy.tgz -C test-artifacts
+          gzip -dc test-artifacts/mihomo.gz > test-artifacts/mihomo
+          chmod 700 test-artifacts/mihomo
+      - name: Shell and Python regressions with real cores
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n sb.sh
+          bash -n security.sh
+          bash tests/test_shell.sh
+          export SING_BOX_CHECK="$PWD/test-artifacts/sing-box-1.14.1-linux-amd64/sing-box"
+          export SING_BOX_LEGACY_CHECK="$PWD/test-artifacts/sing-box-1.10.7-linux-amd64/sing-box"
+          export MIHOMO_CHECK="$PWD/test-artifacts/mihomo"
+          python3 -m unittest discover -s tests -v
+      - name: Rootless container persistence and graceful stop
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --build-arg TARGETARCH=amd64 -t sb-security-test .
+          docker volume create sb-security-data
+          docker run -d --name sb-security --cap-drop=ALL --security-opt no-new-privileges:true --read-only --tmpfs /tmp -e PUBLIC_HOST=127.0.0.1 -v sb-security-data:/data sb-security-test
+          sleep 12
+          test "$(docker inspect -f '{{.State.Running}}' sb-security)" = true
+          docker exec sb-security python3 -c 'import os; assert os.getuid()==10001; assert open("/data/sing-box.pid").read().isdigit()'
+          before=$(docker exec sb-security sha256sum /data/portable-state.json)
+          docker stop -t 15 sb-security
+          test "$(docker inspect -f '{{.State.ExitCode}}' sb-security)" = 0
+          docker start sb-security
+          sleep 5
+          test "$(docker inspect -f '{{.State.Running}}' sb-security)" = true
+          after=$(docker exec sb-security sha256sum /data/portable-state.json)
+          test "$before" = "$after"
+          docker stop -t 15 sb-security
+  distro-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [debian:12, ubuntu:24.04, rockylinux:9, alpine:3.22]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install only required packages in disposable OS container
+        env:
+          TEST_IMAGE: ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c 'from pathlib import Path; s=Path("sb.sh").read_text(); f="secure_dependencies(){"+s.split("secure_dependencies(){",1)[1].split("\nv4v6(){",1)[0]; Path("test-dependencies.sh").write_text("#!/bin/bash\nset -e\n"+f+"\nsecure_dependencies\npython3 --version\nopenssl version\nbash -n /src/sb.sh\n")'
+          docker run --rm -v "$PWD:/src:ro" -e DEBIAN_FRONTEND=noninteractive "$TEST_IMAGE" sh -c 'command -v bash >/dev/null || apk add --no-cache bash; bash /src/test-dependencies.sh'

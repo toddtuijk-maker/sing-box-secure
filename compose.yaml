@@ -1,0 +1,37 @@
+services:
+  sing-box:
+    build:
+      context: .
+      args:
+        TARGETARCH: ${TARGETARCH:-amd64}
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST to your public IP or DNS name}
+      TZ: ${TZ:-Etc/UTC}
+      VLESS_WS_PORT: '34443'
+    volumes:
+      - sing-box-data:/data
+    ports:
+      - "25809:25809/tcp"
+      - "29687:29687/tcp"
+      - "32695:32695/udp"
+      - "41781:41781/udp"
+      - "16134:16134/tcp"
+      - "34443:34443/tcp"
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    healthcheck:
+      test: [CMD, python3, /app/portable.py, --healthcheck]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+volumes:
+  sing-box-data:

@@ -1,0 +1,28 @@
+sing-box-secure — modifications dated 2026-09-23
+
+Derived from yonggekkk/sing-box-yg:
+https://github.com/yonggekkk/sing-box-yg
+Upstream snapshot: 1efd60b1e1954a27b8e8be995200ca57012b1999
+Original copyright and GPL-3.0 license remain applicable. LICENSE is unchanged.
+This fork is not an official upstream release or upstream endorsement.
+Linux UI promotions removed; provenance and legal notices intentionally remain.
+
+Modified Linux manager sb.sh; added security.sh, secure.py, portable.py,
+container definitions and regression tests. No warranty; see LICENSE.
+Serv00/Hostuno and their app.js/index.html/keepalive/workflow dependencies are
+retained without security remediation or operational validation at the owner's
+request. Their presence is NOT approval for safe deployment.
+
+Third-party artifacts:
+- sing-box: SagerNet/sing-box, its own license applies. Not built from source
+  by this fork. SHA-256 pins verify consistency, not absence of backdoors.
+- 1.10.7 assets lack GitHub digests; hashes were computed from HTTPS downloads
+  on 2026-09-23 (trust-on-first-use limitation). Prefer 1.14.1.
+- cloudflared: cloudflare/cloudflared official release assets and digests.
+- Optional sbwpph binaries match Vwarp v2.2.2 artifacts examined in this review.
+  Original bepass-org endpoint is unavailable; binaries are pinned to the
+  upstream commit and SHA-256. No full binary audit or reproducible build
+  proved them safe. Do not enable if this trust model is unacceptable.
+
+No claim of being backdoor-free or suitable for every network, provider,
+jurisdiction or client. Follow local law and provider terms.

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.dev.vars
+node_modules/
+test-artifacts/
+data/
+*.private.json
+*.pem
+*.key

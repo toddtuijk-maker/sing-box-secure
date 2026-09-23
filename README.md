@@ -1,116 +1,118 @@
-### 一、Sing-box-yg精装桶一键五协议共存脚本（VPS专用）
-### 二、Serv00/Hostuno-sb-yg多平台一键三协议共存脚本（Serv00/Hostuno专用）
+# sing-box-secure
 
-### 注：本项目分享订阅节点都为本地化生成，不使用节点转换、订阅器等第三方外链引用，无需担心节点订阅被外链作者查看
+Linux VPS 安全加固与无 root 容器入口。GPL-3.0 衍生项目，来源见 [NOTICE](NOTICE)。
+**当前为验证预览版，不是长期稳定性认证。** 实际测试结果见 Actions；不自动部署到已有 VPS。
 
-### 交流平台：[甬哥博客地址](https://ygkkk.blogspot.com)、[甬哥YouTube频道](https://www.youtube.com/@ygkkk)、[甬哥TG电报群组](https://t.me/+jZHc6-A-1QQ5ZGVl)、[甬哥TG电报频道](https://t.me/+DkC9ZZUgEFQzMTZl)
+## 选择入口
 
-----------------------------------------------------------------
-#### 推荐推广：极简 + 轻量 + 快速的多协议的ArgoSBX脚本，请移步到[ArgoSBX脚本项目](https://github.com/yonggekkk/argosbx)
+| 环境 | 入口 | 范围 |
+|---|---|---|
+| root + systemd/OpenRC Linux VPS | `bash sb.sh` | 保留五协议、分流、可选 Argo/WARP、订阅菜单 |
+| Docker / 非 root / 无 init Linux | `portable.py` 或 Compose | 五协议 + 可选 VLESS WS TLS，不改宿主机 |
+| Serv00 / Hostuno | 原文件原样保留 | **不在本次加固验收范围，已知风险未修复，不建议直接启用** |
 
---------------------------------------------------------------
+主脚本识别 Debian、Ubuntu、Alpine、Rocky、AlmaLinux、RHEL、CentOS Stream、Fedora，拒绝 CentOS/RHEL 7。
+CI 仅检查 Debian 12、Ubuntu 24.04、Rocky 9、Alpine 3.22 的依赖安装与语法，不代表各系统整机安装均已验收。
+VPS 下载支持 amd64/arm64/armv7；容器镜像支持 amd64/arm64，CI 运行 amd64。便携入口需要 Python 3.9+、OpenSSL、sing-box 1.14.1。
 
-### 一、Sing-box-yg精装桶小白专享一键五协议共存脚本（VPS专用）
+## 协议选择
 
-* 支持人气最高的五大协议：Vless-reality-vision、Vmess-ws(tls)/Argo、Hysteria-2、Tuic-v5、Anytls
+- TCP 主线：VLESS Reality Vision。需要原始 TCP 入站及可达的 Reality 握手目标，不是普通 HTTP 反代协议。
+- UDP 备选：Hysteria2 / TUIC v5。供应商必须映射 UDP；限速、封锁、MTU 和丢包会影响体验，不保证更快。
+- TCP 备选：AnyTLS，要求客户端内核支持，不承诺旧客户端兼容。
+- 保留 VMess WS / TLS；容器默认启用 TLS。Argo 非 TLS WS 源站只应用于可信本地隧道连接。
+- **新增便携入口可选 VLESS WebSocket + TLS**：独立 UUID/路径，无 Vision flow，适用于能正确转发 WebSocket/TLS 的环境；不默认引入外部 CDN。
 
-* 支持纯IPV6、纯IPV4、双栈VPS，支持amd与arm架构，支持alpine系统，推荐使用最新的Ubuntu系统
+依据 [VLESS 官方配置](https://sing-box.sagernet.org/configuration/inbound/vless/)、
+[WebSocket transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)、
+[AnyTLS](https://sing-box.sagernet.org/configuration/inbound/anytls/)。
+这不是协议速度排名；安全和可用性还取决于线路、证书、网络及客户端版本。
 
-* 小白简单模式：无需域名证书，回车三次就安装完成，复制、扫描你要的节点配置
+## VPS 安装
 
-#### 相关说明及注意点请查看[甬哥博客说明与Sing-box视频教程](https://ygkkk.blogspot.com/2023/10/sing-box-yg.html)
+私有仓库请使用 GitHub 官方登录后的 git/gh 克隆，或登录 GitHub 下载完整 ZIP。不要把令牌写入命令。不再提供 `curl | bash`。
 
-#### 视频教程：
-[SSH连不上？使用VPS内置SSH，配合一键功能化脚本命令，小白也能快速搭节点！（Racknerd等所有VPS通用）](https://youtu.be/vhqPG9h8PB4)
-
-[Racknerd VPS：小白自建最强翻墙代理协议组合方案；高速、稳定、无视IP被封；解决Google gemini无法使用问题](https://youtu.be/aGEmCu503V8)
-
-[🥇搭建代理9大问题排行榜：第4名全网99%的人被误导！第1名每个人都被折腾到爆！](https://youtu.be/pJwJBqBkcfw)
-
-[🥇2025年度代理协议"拉到夯"综合排名](https://youtu.be/IoFtykGXDao)
-
-[Sing-box精装桶小白一键脚本（一）：配置文件通吃SFA/SFI/SFW三平台客户端，Argo隧道、双证书切换、域名分流](https://youtu.be/QwTapeVPeB0)
-
-[Sing-box精装桶小白一键脚本（二）：纯IPV6 VPS搭建，CDN优选IP设置汇总，全平台多种客户端一个脚本全套带走](https://youtu.be/kmTgj1DundU)
-
-[Sing-box精装桶小白一键脚本（三）：自建gitlab私有订阅链接一键同步推送全平台，WARP分流ChatGPT，SFW电脑客户端支持订阅链接](https://youtu.be/by7C2HU6-fU)
-
-[Sing-box精装桶小白一键脚本（四）：vmess协议CDN优选IP多形态设置(详见说明图)](https://youtu.be/Qfm8DbLeb6w)
-
-[Sing-box精装桶小白一键脚本（五）：集成oblivion warp免费vpn功能，本地WARP+赛风VPN切换分流(30个国家IP)](https://youtu.be/5Y6NPsYPws0)
-
-[Sing-box精装桶五合一脚本重磅更新（六）：新增AnyTLS协议；本地IP订阅自动同步更新，通吃Clash/Mihomo、Sing-box与聚合节点](https://youtu.be/LF0-n6-Z6kI)
-
-### VPS专用一键脚本如下：快捷方式：```sb```
-
-```
-bash <(wget -qO- https://raw.githubusercontent.com/yonggekkk/sing-box-yg/main/sb.sh)
-```
-或者
-```
-bash <(curl -Ls https://raw.githubusercontent.com/yonggekkk/sing-box-yg/main/sb.sh)
+```bash
+git clone https://github.com/toddtuijk-maker/sing-box-secure.git
+cd sing-box-secure
+# 先审核代码，再在目标 VPS 以 root 运行：
+bash sb.sh
 ```
 
-一键快捷命令现实本地IP订阅：```printf '3\n8\n1\n订阅密码' | sb```
+安装后使用 `sb`。默认固定内核 1.14.1；1.10.7 仅为旧分流功能保留，不推荐新装选择。
+内核下载验证 SHA-256；其他版本必须有 GitHub 发布资产摘要。脚本更新只从管理员审核过的完整本地目录载入。
+不关闭防火墙/SELinux、不替换内核、不改 DNS、不整机升级、不清空系统 NAT。
+请自行开放正确的**入站** TCP/UDP。外来 /etc/s-box 会拒绝覆盖；已有安装请先备份迁移。
 
-一键快捷命令现实Argo临时隧道：```printf '3\n3\n1\n1' | sb```
+证书支持导入或本机 Certbot。HTTP-01 需要 80 可达；否则考虑 DNS-01。**手动 DNS-01 没有自动续期**。
+续期后重载服务，禁止关闭 TLS 验证规避过期。
 
-一键快捷命令现实Argo固定隧道：```printf '3\n3\n2\n1\n固定密钥\n固定域名' | sb```
+## 容器 / 便携运行
 
-一键快捷命令现实域名分流：```printf '5\n2\n1\n后缀域名1 后缀域名2' | sb```
-
-
-### Sing-box-yg脚本界面预览图（注：相关参数随意填写，仅供围观）
-
-![1d5425c093618313888fe41a55f493f](https://github.com/user-attachments/assets/2b4b04a6-2de4-499a-afa1-ed78bccc50a8)
-
------------------------------------------------------
-
-### 二、Serv00/Hostuno一键三协议共存脚本（Serv00/Hostuno专用）：
-
-* 目前免费Serv00使用代理脚本有被封账号的风险，收费版Hostuno不受影响，可正常使用
-
-* 切勿与其他Serv00脚本混用！！！
-
-* 引用[老王eooce](https://github.com/eooce/Sing-box/blob/test/sb_00.sh)、[frankiejun](https://github.com/frankiejun/serv00-play/blob/main/start.sh)相关功能，支持一键三协议：vless-reality、vmess-ws(argo)、hysteria2
-
-* 主要增加reality协议默认支持 CF vless/trojan 节点的proxyip以及非标端口的优选反代IP功能
-
-* 聚合通用节点分享，支持到22个节点：三协议各自三个IP，argo全覆盖13个端口节点，已添加不死优选IP
-
-#### 相关说明及注意点请查看[甬哥博客说明与Serv00视频教程](https://ygkkk.blogspot.com/2025/01/serv00.html)
-
-#### 视频教程：
-
-[Serv00免费代理脚本最终教程（一）：独家支持三个IP自定义安装，支持Proxyip+反代IP、支持Argo临时/固定隧道+CDN回源；支持五个节点的Sing-box与Clash订阅配置输出](https://youtu.be/2VF9D6z2z7w)
-
-[Serv00免费代理脚本最终教程（二）：Serv00不必再登录SSH了，部署保活融为一体，独家支持Github、VPS、软路由多平台多账户通用部署，四大方案总有一款适合你](https://youtu.be/rYeX1iU_iZ0)
-
-[Serv00免费代理脚本最终教程（三）：多功能网页生成【保活+重启+重置端口+查看订阅节点】、随意重置端口功能；Github+Workers自动执行保活功能任你选！](https://youtu.be/9uCfFNnjNc0)
-
-[Serv00免费代理脚本最终教程（四）：重大更新！支持Argo临时/固定隧道相互切换，实时更新节点信息；完美适配Serv00收费版Hostuno.com](https://youtu.be/XN6_vpz1NhE)
-
-[Serv00免费代理脚本最终教程（五）：Github、VPS、软路由多平台脚本大更新！支持多功能网页，Cron内射保活+网页外射保活，任你选](https://youtu.be/tKaBdbU4G4s)
-
-### Serv00/Hostuno-sb-yg一键脚本 
-
-* Argo高度自定义：可以重置临时隧道; 可以继续使用上回的固定隧道; 也可以更换固定隧道的域名或token
-
-```
-bash <(curl -Ls https://raw.githubusercontent.com/yonggekkk/sing-box-yg/main/serv00.sh)
+```bash
+PUBLIC_HOST=your.example.com TZ=Asia/Shanghai docker compose up -d --build
+docker compose ps
+docker compose logs --tail=100
 ```
 
-#### Serv00/Hostuno-sb-yg脚本界面预览图，仅限方案一的SSH端安装脚本（注：仅供围观）
-![a6b776a094566ab14e88fdcd70ba9e9](https://github.com/user-attachments/assets/90a918ed-aec7-4a1f-8159-97f3acfd0092)
+ARM64 加 `TARGETARCH=arm64`。使用 UID 10001、cap_drop ALL、只读根文件系统和 /tmp tmpfs；
+不要求 privileged、TUN、systemd、host network。命名卷保存密钥配置，**不要删除数据卷**。
+绑定目录时预先授予 UID 10001 写权限。
 
+Compose 端口：25809/TCP Reality、29687/TCP VMess TLS WS、32695/UDP HY2、41781/UDP TUIC、
+16134/TCP AnyTLS、34443/TCP VLESS WS TLS。只映射需要的端口。
+仅提供 HTTP 反代的平台不能凭脚本启用原始 TCP/UDP；需自行配置可信 TLS 终止/源站连接，本项目不自动适配平台面板。
 
------------------------------------------------------
-### 感谢支持！微信打赏甬哥侃侃侃ygkkk
-![41440820a366deeb8109db5610313a1](https://github.com/user-attachments/assets/5cd2d891-ae54-4397-8211-ac4c6d1099c9)
+无需 Docker：
 
----------------------------------------
-### 感谢你右上角的star🌟
-[![Stargazers over time](https://starchart.cc/yonggekkk/sing-box-yg.svg)](https://starchart.cc/yonggekkk/sing-box-yg)
+```bash
+PUBLIC_HOST=your.example.com VLESS_WS_PORT=34443 \
+python3 portable.py --binary /absolute/path/sing-box --data ./data
+```
 
----------------------------------------
-#### 声明：所有代码来源于Github社区与ChatGPT的整合
+首次初始化变量：VLESS_PORT、VMESS_PORT、HYSTERIA2_PORT、TUIC_PORT、ANYTLS_PORT、可选 VLESS_WS_PORT，
+必须互不重复且在 1024–65535；VMESS_TLS=0 仅供可信 TLS 反代源站。新的 VLESS WS 入口始终 TLS。
+初始化变量**不会覆盖已有持久化配置**。修改前备份、运行内核 check、同步客户端。
+普通前台进程异常退出后，由平台/服务管理器负责重新启动。
+
+## 订阅与客户端
+
+本地生成，无第三方转换：
+`clmi.yaml` 面向 Mihomo（容器版为合法 YAML 的 JSON 子集）；
+`sbox.json` 面向 sing-box 1.14 系列；
+`jhsub.txt` 为 Base64 节点集合，客户端仅支持其中与自身内核匹配的协议。
+
+旧 Clash 不支持全部协议。Clash Verge/FlClash 也取决于内核版本。
+v2rayN、Shadowrocket 等尚未逐款真机验证，不能保证所有节点都可用。
+完整配置嵌入自签 CA/证书指纹并保持校验开启；通用 URI 无法统一携带信任信息。
+包括带 pinSHA256 的 HY2 在内，自签 TLS URI 仍需手工信任或使用受信任域名证书，
+见 [Hysteria TLS 文档](https://hysteria.network/docs/getting-started/Client/)。勿开启 insecure/skip-cert-verify。
+
+VPS 菜单提供 HTTPS 订阅：有效证书、随机令牌路径、三文件白名单、并发限制、无令牌访问日志，启动后降权。
+订阅链接等同密码，不要公开。GitLab 可选私有项目推送使用独立写/只读令牌、不强推；
+读令牌仍须限制账户/项目权限。Telegram 推送会将节点凭据交给 Telegram，仅在理解风险后开启。
+容器默认不托管订阅，请安全取出文件或自建受保护 HTTPS；**禁止公开整个 /data**。
+
+## 长期运行
+
+- VPS 用 systemd/OpenRC 监管；容器前台进程退出联动及 restart policy，SIGTERM 优雅停止。
+- 默认每天 **03:00（服务器/容器时区）** 检查配置后重启，会短暂断线。容器默认 UTC，示例设置上海时区。
+  便携入口可用 --restart-hour 改时间；VPS 修改自己的 cron 行，重装任务会恢复默认。
+- 重启前检查配置；失败保留最近有效配置；内核更新失败尝试回退。
+- Compose 日志每份 10MB、3份；Argo 文件每小时检查轮转；宿主 journald 配额由管理员管理，不全局改写。
+- 容器健康检查仅检查本地进程/TCP监听，不证明公网可达。Docker unhealthy 本身**不会自动重启**；进程退出才触发策略。
+- 证书到期、磁盘/内存、流量额度、封锁仍需运维。03:00 重启不是以前 -1 故障的根因结论。
+- Argo 固定域名更适合持久订阅；临时域名重启可变。WARP/Argo 是可选外部依赖，不建议作为唯一通道。
+
+## 验证与边界
+
+```bash
+bash -n sb.sh && bash -n security.sh
+bash tests/test_shell.sh
+SING_BOX_CHECK=/path/sing-box python3 -m unittest discover -s tests -v
+```
+
+完整 CI 设置 1.14.1、1.10.7、Mihomo 校验器。检查真实内核配置、独立凭据、下载失败保留旧文件、
+cron 隔离、订阅白名单、VMess TLS/HY2/TUIC/AnyTLS/VLESS WS TLS 本地实际传输、
+容器停止/重启与持久化。Reality 未以假目标代替公网验收。
+尚未完成真实整机重启、多运营商测速、手机逐款导入、24/72小时持续运行，见 [SECURITY.md](SECURITY.md)。
