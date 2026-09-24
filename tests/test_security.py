@@ -63,7 +63,7 @@ class SecurityTests(unittest.TestCase):
     def test_credentials_exported_per_protocol(self):
         protocols = {'vless': {'uuid': 'vless-only'}, 'vmess': {'uuid': 'vmess-only'}, 'hysteria2': {'password': 'hy-only'}, 'tuic': {'uuid': 'tuic-only', 'password': 'tuic-password'}, 'anytls': {'password': 'any-only'}}
         server = {'inbounds': [dict(type=p, users=[creds]) for p, creds in protocols.items()]}
-        client = {'outbounds': [dict(type=p, uuid='old-shared', password='old-shared', tls={'enabled': True, 'insecure': True}) for p in protocols]}
+        client = {'outbounds': [dict(type=p, tag=p, server='example.com', server_port=12345, uuid='old-shared', password='old-shared', tls={'enabled': True, 'insecure': True}) for p in protocols]}
         (self.root / 'sb.json').write_text(json.dumps(server))
         (self.root / 'sbox.json').write_text(json.dumps(client))
         (self.root / 'clmi.yaml').write_text('proxies:\n' + ''.join('- name: ' + p + '\n  type: ' + p + '\n  uuid: old\n  password: old\n  skip-cert-verify: true\n' for p in protocols))
@@ -77,6 +77,42 @@ class SecurityTests(unittest.TestCase):
         self.assertNotIn('skip-cert-verify: true', yaml)
         self.assertIn('uuid: "vmess-only"', yaml)
         self.assertIn('password: "tuic-password"', yaml)
+        self.assertEqual(len((self.root / 'v2rayn.txt').read_text().splitlines()), 5)
+
+    def test_v2rayn_export_security_and_compatibility(self):
+        outbound = dict(type='anytls', tag='test', server='example.com', server_port=12345,
+                        password='test-secret', tls={'enabled': True, 'insecure': False})
+        secure.export_v2rayn(self.root, {'outbounds': [outbound]})
+        original = (self.root / 'v2rayn.txt').read_bytes()
+        self.assertEqual(secure.subscription_files(self.root), secure.FILES)
+        for bad in ('not PEM', '-----BEGIN PRIVATE KEY-----\nYWJj\n-----END PRIVATE KEY-----'):
+            with self.subTest(certificate=bad):
+                outbound['tls']['certificate'] = bad
+                with self.assertRaises(ValueError):
+                    secure.export_v2rayn(self.root, {'outbounds': [outbound]})
+                self.assertEqual((self.root / 'v2rayn.txt').read_bytes(), original)
+        outbound['tls'].pop('certificate')
+        outbound['tls']['insecure'] = True
+        with self.assertRaises(ValueError):
+            secure.export_v2rayn(self.root, {'outbounds': [outbound]})
+        (self.root / 'v2rayn.txt').unlink()
+        self.assertEqual(secure.subscription_files(self.root), secure.FILES[:3])
+
+    def test_gitlab_includes_v2rayn_without_widening_allowlist(self):
+        cfg = dict(project='test/private', branch='main', writer='test-writer', reader='test-reader')
+        (self.root / 'gitlab-secure.json').write_text(json.dumps(cfg))
+        for name in secure.FILES:
+            (self.root / name).write_text('test fixture')
+        (self.root / 'private.key').write_text('must not publish')
+        def response(path, token, data=None, method=None):
+            return {'visibility': 'private', 'scopes': ['read_api']}
+        with patch.object(secure, 'api', side_effect=response) as mock:
+            secure.gitlab_publish(self.root)
+        commit = next(call for call in mock.call_args_list if call.args[0].endswith('/repository/commits'))
+        self.assertEqual({a['file_path'] for a in commit.args[2]['actions']}, set(secure.FILES))
+        url = (self.root / 'v2rayn_gitlab.txt').read_text()
+        self.assertIn('/v2rayn.txt/raw?', url)
+        self.assertNotIn('test-writer', url)
 
     def test_identity_validation_leaves_original_intact(self):
         source = json.dumps({'inbounds': [{'type': 'vmess', 'users': [{'uuid': 'private-uuid'}], 'transport': {'path': '/old'}}]}, indent=2)
@@ -162,6 +198,12 @@ class SecurityTests(unittest.TestCase):
                 secure.trust_exports(self.root)
                 data = secure.read_json(self.root / 'sbox.json')
                 self.assertIn('outbounds', data)
+                if os.environ.get('V2RAYN_HARNESS'):
+                    result = subprocess.run([os.environ.get('DOTNET_TEST', 'dotnet'), os.environ['V2RAYN_HARNESS'],
+                        str(self.root / 'v2rayn.txt'), str(self.root / 'v2rayn-imported.json')], capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    imported = secure.read_json(self.root / 'v2rayn-imported.json')
+                    self.assertEqual(len(imported), sum(x['type'] not in ('selector', 'urltest', 'direct') for x in data['outbounds']))
                 if os.environ.get('SING_BOX_CHECK'):
                     check = subprocess.run([os.environ['SING_BOX_CHECK'], 'check', '-c', str(self.root / 'sbox.json')], text=True, capture_output=True)
                     self.assertEqual(check.returncode, 0, check.stdout + check.stderr)

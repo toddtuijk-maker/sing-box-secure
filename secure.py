@@ -23,7 +23,12 @@ import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-FILES = ('sbox.json', 'clmi.yaml', 'jhsub.txt')
+FILES = ('sbox.json', 'clmi.yaml', 'jhsub.txt', 'v2rayn.txt')
+
+
+def subscription_files(root):
+    # Old installations may not have refreshed exports yet; keep their three URLs working.
+    return FILES if (root / 'v2rayn.txt').is_file() else FILES[:3]
 
 
 def write_private(path, value):
@@ -51,6 +56,102 @@ def pem_fingerprint(pem):
     return hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest()
 
 
+def v2rayn_profiles(outbounds):
+    """v2rayN ConfigVersion 4: embed CA material and explicitly select sing-box.
+
+    The ordinary HY2 URI importer in 7.24.8 turns pinSHA256 into AllowInsecure;
+    its sing-box builder then drops that pin. Use the internal format and Cert,
+    never that fallback. This function is shared by VPS and portable exporters.
+    """
+    kinds = {'vmess': 1, 'vless': 5, 'hysteria2': 7, 'tuic': 8, 'anytls': 11}
+    profiles = []
+    for outbound in outbounds:
+        kind = outbound['type']
+        if kind in ('selector', 'urltest', 'direct', 'block', 'dns'):
+            continue
+        if kind not in kinds:
+            raise ValueError('Unsupported v2rayN export protocol')
+        host = outbound['server']
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            validate_domain(host)
+        ports = outbound.get('server_ports') or []
+        port = int(outbound.get('server_port') or (ports[0].split(':')[0] if ports else 0))
+        if not 1 <= port <= 65535:
+            raise ValueError('Invalid public port')
+        profile = {'ConfigType': kinds[kind], 'CoreType': 24, 'ConfigVersion': 4,
+                   'Remarks': outbound['tag'], 'Address': host, 'Port': port,
+                   'Password': outbound['uuid'] if kind in ('vless', 'vmess') else outbound['password'],
+                   'Network': 'raw', 'AllowInsecure': 'false', 'MuxEnabled': False}
+        extra = {}
+        if kind == 'vless':
+            extra.update(Flow=outbound.get('flow', ''), VlessEncryption='none')
+        elif kind == 'vmess':
+            extra.update(AlterId=str(outbound.get('alter_id', 0)), VmessSecurity=outbound.get('security', 'auto'))
+        elif kind == 'tuic':
+            profile['Username'] = outbound['uuid']
+            extra['CongestionControl'] = outbound.get('congestion_control', 'bbr')
+        elif kind == 'hysteria2':
+            extra.update(UpMbps=outbound.get('up_mbps', 0), DownMbps=outbound.get('down_mbps', 0))
+            if ports:
+                extra['Ports'] = ','.join(ports)
+            if outbound.get('obfs'):
+                if outbound['obfs']['type'] != 'salamander':
+                    raise ValueError('Unsupported HY2 obfuscation')
+                extra['SalamanderPass'] = outbound['obfs']['password']
+        profile['ProtoExtraObj'] = extra
+        tls = outbound.get('tls', {})
+        if tls.get('enabled'):
+            if tls.get('insecure'):
+                raise ValueError('Refusing insecure TLS export')
+            profile.update(StreamSecurity='tls', Sni=tls.get('server_name', host), Alpn=','.join(tls.get('alpn') or []))
+            if tls.get('utls', {}).get('enabled'):
+                profile['Fingerprint'] = tls['utls']['fingerprint']
+            if tls.get('reality', {}).get('enabled'):
+                profile.update(StreamSecurity='reality', PublicKey=tls['reality']['public_key'], ShortId=tls['reality'].get('short_id', ''))
+            else:
+                pem = tls.get('certificate', '')
+                if isinstance(pem, list):
+                    pem = '\n'.join(pem)
+                if pem:
+                    pattern = r'-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+?-----END CERTIFICATE-----'
+                    certificates = re.findall(pattern, pem)
+                    if not certificates or re.sub(pattern, '', pem).strip():
+                        raise ValueError('Export requires PEM certificates only')
+                    for cert in certificates:
+                        pem_fingerprint(cert)
+                    profile['Cert'] = '\n'.join(certificates) + '\n'
+                elif tls.get('certificate_path'):
+                    raise ValueError('Embed certificate before exporting')
+        transport = outbound.get('transport', {})
+        if transport:
+            network = transport['type']
+            if network not in ('ws', 'grpc', 'httpupgrade'):
+                raise ValueError('Unsupported v2rayN transport')
+            profile['Network'] = network
+            if network == 'grpc':
+                profile['TransportExtraObj'] = {'GrpcServiceName': transport.get('service_name', '')}
+            else:
+                headers = transport.get('headers', {})
+                host_header = headers.get('Host', headers.get('host', ''))
+                if isinstance(host_header, list):
+                    host_header = ','.join(host_header)
+                profile['TransportExtraObj'] = {'Path': transport.get('path', '/'), 'Host': host_header}
+        profiles.append((kind, profile))
+    if not profiles:
+        raise ValueError('No supported proxy nodes to export')
+    return profiles
+
+
+def export_v2rayn(root, client):
+    links = []
+    for kind, profile in v2rayn_profiles(client['outbounds']):
+        payload = base64.urlsafe_b64encode(json.dumps(profile, ensure_ascii=False, separators=(',', ':')).encode()).decode().rstrip('=')
+        links.append('v2rayn://' + kind + '/' + payload)
+    write_private(root / 'v2rayn.txt', '\n'.join(links) + '\n')
+
+
 def trust_exports(root):
     """Trust exactly the self-signed certificate, never arbitrary certificates."""
     server = read_json(root / 'sb.json')
@@ -75,6 +176,7 @@ def trust_exports(root):
             if outbound['type'] in trust and tls.get('enabled'):
                 tls['certificate'] = trust[outbound['type']][0].splitlines()
     write_private(root / 'sbox.json', json.dumps(client, ensure_ascii=False, indent=2) + '\n')
+    export_v2rayn(root, client)
     yaml = (root / 'clmi.yaml').read_text(encoding='utf-8')
     # Generated template has one block per top-level "- name:". Do not parse arbitrary YAML.
     blocks = re.split(r'(?=^- name:)', yaml, flags=re.M)
@@ -186,7 +288,7 @@ def sub_urls(root):
     if not path.exists():
         return
     cfg = read_json(path)
-    for name in FILES:
+    for name in subscription_files(root):
         print('https://{}:{}/{}/{}'.format(cfg['domain'], cfg['port'], cfg['token'], name))
 
 
@@ -219,7 +321,7 @@ def make_handler(token, payloads):
 
 def serve(root):
     cfg = read_json(root / 'subscription.json')
-    payloads = {name: (root / name).read_bytes() for name in FILES}
+    payloads = {name: (root / name).read_bytes() for name in subscription_files(root)}
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cfg['cert'], cfg['key'])
@@ -338,7 +440,7 @@ def gitlab_publish(root):
     if scopes != {'read_api'}:
         raise ValueError('Read token scope changed; publication refused')
     actions = []
-    for name in FILES:
+    for name in subscription_files(root):
         try:
             api(prefix + '/repository/files/' + name + '?ref=' + urllib.parse.quote(cfg['branch'], safe=''), cfg['writer'])
             action = 'update'
@@ -348,7 +450,9 @@ def gitlab_publish(root):
             action = 'create'
         actions.append(dict(action=action, file_path=name, content=(root / name).read_text(encoding='utf-8')))
     api(prefix + '/repository/commits', cfg['writer'], dict(branch=cfg['branch'], commit_message='Update private subscription', actions=actions), 'POST')
-    for name, output in zip(FILES, ('sing_box_gitlab.txt', 'clash_meta_gitlab.txt', 'jh_sub_gitlab.txt')):
+    for name, output in zip(FILES, ('sing_box_gitlab.txt', 'clash_meta_gitlab.txt', 'jh_sub_gitlab.txt', 'v2rayn_gitlab.txt')):
+        if name not in subscription_files(root):
+            continue
         url = 'https://gitlab.com/api/v4/' + prefix + '/repository/files/' + name + '/raw?' + urllib.parse.urlencode({'ref': cfg['branch'], 'private_token': cfg['reader']})
         write_private(root / output, url + '\n')
     print('订阅已更新，写令牌未写入订阅链接。只读令牌仍是秘密，不要公开分享。')

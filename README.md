@@ -81,18 +81,37 @@ NAT 的公网端口与机内端口不同时，为对应协议增加 `VLESS_PUBLI
 
 ## 订阅与客户端
 
-本地生成，无第三方转换：
+本地生成，无第三方转换。**请按客户端选择文件，不要把通用 URI 集合当成万能订阅。**
+
+| 客户端 | 文件 | 导入方式 |
+|---|---|---|
+| v2rayN 7.24.8（已测试） | `v2rayn.txt` | 全选复制 → 主窗口 Ctrl+V；或使用专属 HTTPS 订阅 URL |
+| Mihomo / 支持对应内核的 Clash Verge、FlClash | `clmi.yaml` | 导入本地配置或专属订阅 URL |
+| sing-box 1.14 系列 | `sbox.json` | 导入完整配置 |
+| 其他 URI 客户端 | `jhsub.txt` | Base64 通用节点集合；自签 TLS 需要额外信任配置，不保证即用 |
+
+`v2rayn.txt` 使用官方 `v2rayn://` ConfigVersion 4 格式，内嵌证书，固定 sing-box 内核，
+明确 `AllowInsecure=false`，保留独立凭据、NAT 公网端口、WS 路径、Reality 参数和 TUIC UUID/密码。
+不需要把自签证书安装进系统根证书库。请确认客户端已经安装 sing-box 内核；旧版客户端不承诺兼容。
+证书或凭据改变后，应更新对应订阅，或删除**该部署的旧节点**后重新导入，不要误选旧配置。
+
+格式参考：[v2rayN 官方订阅说明](https://github.com/2dust/v2rayN/wiki/Description-of-subscription)。
+便携启动时自动导出；主脚本的分享菜单自动刷新；也可运行 `python3 secure.py trust --root /etc/s-box` 刷新主脚本导出。
+
+兼容性说明：
 `clmi.yaml` 面向 Mihomo（容器版为合法 YAML 的 JSON 子集）；
 `sbox.json` 面向 sing-box 1.14 系列；
 `jhsub.txt` 为 Base64 节点集合，客户端仅支持其中与自身内核匹配的协议。
 
 旧 Clash 不支持全部协议。Clash Verge/FlClash 也取决于内核版本。
-v2rayN、Shadowrocket 等尚未逐款真机验证，不能保证所有节点都可用。
+v2rayN 已验证官方导入/配置生成代码与真实内核；没有自动操作其 GUI。Shadowrocket 等尚未逐款真机验证。
 完整配置嵌入自签 CA/证书指纹并保持校验开启；通用 URI 无法统一携带信任信息。
-包括带 pinSHA256 的 HY2 在内，自签 TLS URI 仍需手工信任或使用受信任域名证书，
+已移除通用 HY2 链接的 `pinSHA256`：v2rayN 7.24.8 普通 URI 导入器会据此打开跳过验证，
+而其 sing-box 配置生成器没有应用该 pin。专用格式直接携带 PEM 证书，避免这个转换问题。
+自签 TLS 通用 URI 仍需手工信任或使用受信任域名证书，
 见 [Hysteria TLS 文档](https://hysteria.network/docs/getting-started/Client/)。勿开启 insecure/skip-cert-verify。
 
-VPS 菜单提供 HTTPS 订阅：有效证书、随机令牌路径、三文件白名单、并发限制、无令牌访问日志，启动后降权。
+VPS 菜单提供 HTTPS 订阅：有效证书、随机令牌路径、四文件白名单（含 `v2rayn.txt`）、并发限制、无令牌访问日志，启动后降权。
 订阅链接等同密码，不要公开。GitLab 可选私有项目推送使用独立写/只读令牌、不强推；
 读令牌仍须限制账户/项目权限。Telegram 推送会将节点凭据交给 Telegram，仅在理解风险后开启。
 容器默认不托管订阅，请安全取出文件或自建受保护 HTTPS；**禁止公开整个 /data**。
@@ -116,7 +135,9 @@ bash tests/test_shell.sh
 SING_BOX_CHECK=/path/sing-box python3 -m unittest discover -s tests -v
 ```
 
-完整 CI 设置 1.14.1、1.10.7、Mihomo 校验器。检查真实内核配置、独立凭据、下载失败保留旧文件、
+完整 CI 设置 1.14.1、1.10.7、Mihomo 校验器，并编译固定版本 v2rayN 7.24.8 官方导入器及配置生成器，
+检查生成的五个 TLS 协议能通过 1.13.21 内核实际传输、错误证书主机名均被拒绝。
+导入器测试不读写用户的 v2rayN 数据库。检查真实内核配置、独立凭据、下载失败保留旧文件、
 cron 隔离、订阅白名单、VMess TLS/HY2/TUIC/AnyTLS/VLESS WS TLS 本地实际传输、
 容器停止/重启与持久化。Reality 未以假目标代替公网验收。
 尚未完成真实整机重启、多运营商测速、手机逐款导入、24/72小时持续运行，见 [SECURITY.md](SECURITY.md)。

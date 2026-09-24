@@ -1044,7 +1044,7 @@ yellow "Hysteria2 单节点 URI 保持严格证书验证。自签证书请使用
 SHA256=$(openssl x509 -in "$(sed '/^[[:space:]]*\/\//d' /etc/s-box/sb.json | jq -r '.inbounds[2].tls.certificate_path')" -outform DER | sha256sum | awk '{print $1}')
 echo
 white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-hy2_link="hysteria2://$hy2_password@$sb_hy2_ip:$hy2_port?security=tls&alpn=h3&insecure=0&allowInsecure=0$hyps&sni=$hy2_name&pinSHA256=$SHA256#hy2-$hostname"
+hy2_link="hysteria2://$hy2_password@$sb_hy2_ip:$hy2_port?security=tls&alpn=h3&insecure=0&allowInsecure=0$hyps&sni=$hy2_name#hy2-$hostname"
 #hy2_link="hysteria2://$hy2_password@$sb_hy2_ip:$hy2_port?security=tls&alpn=h3&insecure=$ins_hy2&allowInsecure=$ins_hy2$hyps&sni=$hy2_name#hy2-$hostname"
 echo "$hy2_link" > /etc/s-box/hy2.txt
 red "🚀【 Hysteria-2 】节点信息如下：" && sleep 2
@@ -2946,8 +2946,10 @@ secure_qr "$(cat /etc/s-box/clash_meta_gitlab.txt 2>/dev/null)"
 echo
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 echo
-green "当前聚合节点配置已更新并推送"
-green "订阅链接如下："
+green "v2rayN 专用订阅（携带证书）："
+blue "$(cat /etc/s-box/v2rayn_gitlab.txt 2>/dev/null)"
+echo
+green "通用 URI 聚合订阅（自签 TLS 需要额外信任配置）："
 blue "$(cat /etc/s-box/jh_sub_gitlab.txt 2>/dev/null)"
 echo
 yellow "可以在网页上输入订阅链接查看配置内容，如果无配置内容，请自检Gitlab相关设置并重置"
@@ -3565,6 +3567,9 @@ white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 echo
 sb_client
 python3 /etc/s-box/secure.py trust || return 1
+yellow "v2rayN 7.24.8 请用 /etc/s-box/v2rayn.txt（含证书，固定 sing-box 内核）全选复制后 Ctrl+V 导入。"
+yellow "上方通用 URI / jhsub.txt 并非自签证书节点的即用订阅；不要开启跳过证书验证。"
+cat /etc/s-box/v2rayn.txt
 if [[ -s /etc/s-box/subscription.json ]]; then
     if command -v systemctl >/dev/null; then
         systemctl try-restart sing-box-secure-sub 2>/dev/null || true

@@ -8,3 +8,5 @@ data/
 *.private.json
 *.pem
 *.key
+/tests/v2rayn-harness/bin/
+/tests/v2rayn-harness/obj/

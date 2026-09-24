@@ -37,7 +37,7 @@ class PortableTests(unittest.TestCase):
         state.update(private_key='private', public_key='public')
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            (root / 'cert.pem').write_text('test certificate')
+            (root / 'cert.pem').write_text('-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----\n')
             config = portable.server_config(state, root)
             self.assertEqual(config['inbounds'][0]['listen_port'], 12331)
             with patch.object(portable, 'pem_fingerprint', return_value='a' * 64):
@@ -50,6 +50,12 @@ class PortableTests(unittest.TestCase):
                 links = base64.b64decode((root / 'jhsub.txt').read_text()).decode()
                 self.assertIn('@192.0.2.1:40563?', links)
                 self.assertIn('@192.0.2.1:40511?', links)
+                self.assertNotIn('pinSHA256', links)
+                profiles = [json.loads(base64.urlsafe_b64decode(line.rsplit('/', 1)[1] + '==='))
+                            for line in (root / 'v2rayn.txt').read_text().splitlines()]
+                self.assertEqual([p['Port'] for p in profiles], [40563, 29687, 32695, 41781, 16134, 40511])
+                self.assertTrue(all(p['AllowInsecure'] == 'false' and p['CoreType'] == 24 for p in profiles))
+                self.assertTrue(all(p.get('Cert') for p in profiles if p['StreamSecurity'] == 'tls'))
                 del state['public_ports']
                 portable.export_clients(root, state, config)
                 links = base64.b64decode((root / 'jhsub.txt').read_text()).decode()
@@ -69,8 +75,10 @@ class PortableTests(unittest.TestCase):
             root = Path(temp)
             portable.initialize(root, binary, '127.0.0.1')
             initial = (root / 'portable-state.json').read_bytes()
+            initial_export = (root / 'v2rayn.txt').read_bytes()
             portable.initialize(root, binary, '')
             self.assertEqual(initial, (root / 'portable-state.json').read_bytes())
+            self.assertEqual(initial_export, (root / 'v2rayn.txt').read_bytes())
             for name in ('sb.json', 'sbox.json'):
                 result = subprocess.run([binary, 'check', '-c', str(root / name)], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -118,6 +126,15 @@ class PortableTests(unittest.TestCase):
                 env.update(VLESS_WS_PORT=str(free_port()), VMESS_TLS='1')
                 with patch.dict(os.environ, env):
                     portable.initialize(root, binary, '127.0.0.1')
+                imported = []
+                if os.environ.get('V2RAYN_HARNESS'):
+                    result = subprocess.run([os.environ.get('DOTNET_TEST', 'dotnet'), os.environ['V2RAYN_HARNESS'],
+                                             str(root / 'v2rayn.txt'), str(root / 'v2rayn-imported.json')],
+                                            capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    imported = json.loads((root / 'v2rayn-imported.json').read_text())
+                    self.assertEqual(len(imported), 6)
+                    self.assertTrue(all(not item['tls'].get('insecure', False) for item in imported))
                 if os.environ.get('MIHOMO_CHECK'):
                     result = subprocess.run([os.environ['MIHOMO_CHECK'], '-t', '-f', str(root / 'clmi.yaml'), '-d', str(root)], capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -128,6 +145,13 @@ class PortableTests(unittest.TestCase):
                         ready(int(env['ANYTLS_PORT']), server)
                         outbounds = json.loads((root / 'sbox.json').read_text())['outbounds']
                         candidates = []
+                        for outbound in imported:
+                            if outbound['tag'] == 'vless':
+                                continue
+                            candidates.append(('v2rayN', outbound['tag'], outbound, True))
+                            wrong = json.loads(json.dumps(outbound))
+                            wrong['tls']['server_name'] = 'wrong.invalid'
+                            candidates.append(('v2rayN', outbound['tag'], wrong, False))
                         mihomo = json.loads((root / 'clmi.yaml').read_text())
                         for outbound in outbounds:
                             if outbound['type'] in ('selector', 'direct') or outbound['tag'] == 'vless':
@@ -145,9 +169,10 @@ class PortableTests(unittest.TestCase):
                         for engine, tag, proxy, expected in candidates:
                             with self.subTest(engine=engine, protocol=tag, valid_certificate=expected):
                                 port = free_port()
-                                if engine == 'sing-box':
+                                if engine in ('sing-box', 'v2rayN'):
                                     config = {'log': {'level': 'warn'}, 'inbounds': [{'type': 'mixed', 'listen': '127.0.0.1', 'listen_port': port}], 'outbounds': [proxy]}
-                                    args = [binary, 'run', '-D', str(root), '-c', str(root / 'test-client.json')]
+                                    checker = os.environ.get('SING_BOX_V2RAYN_CHECK', binary) if engine == 'v2rayN' else binary
+                                    args = [checker, 'run', '-D', str(root), '-c', str(root / 'test-client.json')]
                                 else:
                                     config = {'mixed-port': port, 'allow-lan': False, 'bind-address': '127.0.0.1', 'mode': 'rule', 'log-level': 'warning', 'proxies': [proxy], 'rules': ['MATCH,' + tag]}
                                     args = [os.environ['MIHOMO_CHECK'], '-f', str(root / 'test-client.json'), '-d', str(root)]

@@ -14,16 +14,30 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Pinned v2rayN 7.24.8 importer source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: 2dust/v2rayN
+          ref: af0eb9ed14638fa877d11c235e491442ec7ba215
+          path: test-artifacts/v2rayn-source
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build real upstream importer and outbound generator harness
+        run: dotnet build tests/v2rayn-harness/Harness.csproj -c Release -p:V2rayNSource="$PWD/test-artifacts/v2rayn-source" -p:PublishSingleFile=false --nologo -v quiet
       - name: Download checksum-pinned test cores
         shell: bash
         run: |
           set -euo pipefail
-          mkdir test-artifacts
+          mkdir -p test-artifacts
           source security.sh
           secure_download https://github.com/SagerNet/sing-box/releases/download/v1.14.1/sing-box-1.14.1-linux-amd64-musl.tar.gz test-artifacts/core.tgz b907365b154e4a7e3e40be15c2cd83433c0fa65c7dc736bdb1b5face2afe4501
+          secure_download https://github.com/SagerNet/sing-box/releases/download/v1.13.21/sing-box-1.13.21-linux-amd64-musl.tar.gz test-artifacts/v2rayn-core.tgz 8864abb3b72a6b404445a8c25183c79cfa44a80def0d775ac79578e74fb980e7
           secure_download https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-amd64.tar.gz test-artifacts/legacy.tgz 1951a0785c8b4e1e21e0640227a49528ca772aec3d680061652e3d6b687e00fe
           secure_download https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-linux-amd64-compatible-v1.19.31.gz test-artifacts/mihomo.gz 04cf9f09671704f839ddbee2e93069dc831a4123a75281e725d1d96ab9ac1afc
           tar xzf test-artifacts/core.tgz -C test-artifacts
+          tar xzf test-artifacts/v2rayn-core.tgz -C test-artifacts
           tar xzf test-artifacts/legacy.tgz -C test-artifacts
           gzip -dc test-artifacts/mihomo.gz > test-artifacts/mihomo
           chmod 700 test-artifacts/mihomo
@@ -37,6 +51,8 @@ jobs:
           export SING_BOX_CHECK="$PWD/test-artifacts/sing-box-1.14.1-linux-amd64-musl/sing-box"
           export SING_BOX_LEGACY_CHECK="$PWD/test-artifacts/sing-box-1.10.7-linux-amd64/sing-box"
           export MIHOMO_CHECK="$PWD/test-artifacts/mihomo"
+          export V2RAYN_HARNESS="$PWD/tests/v2rayn-harness/bin/Release/net10.0/Harness.dll"
+          export SING_BOX_V2RAYN_CHECK="$PWD/test-artifacts/sing-box-1.13.21-linux-amd64-musl/sing-box"
           python3 -m unittest discover -s tests -v
       - name: Rootless container persistence and graceful stop
         if: ${{ !cancelled() }}

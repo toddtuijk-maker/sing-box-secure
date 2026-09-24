@@ -20,7 +20,7 @@ import time
 import urllib.parse
 import uuid
 
-from secure import pem_fingerprint, read_json, validate_domain, write_private
+from secure import export_v2rayn, pem_fingerprint, read_json, validate_domain, write_private
 
 DEFAULT_PORTS = {'vless': 25809, 'vmess': 29687, 'hysteria2': 32695, 'tuic': 41781, 'anytls': 16134}
 
@@ -122,7 +122,9 @@ def export_clients(root, state, config):
                 vm = {'v': '2', 'ps': 'vmess', 'add': host, 'port': str(port), 'id': credentials['uuid'], 'aid': '0', 'net': 'ws', 'path': inbound['transport']['path'], 'host': host, 'tls': 'tls' if enabled else '', 'sni': host, 'type': 'none'}
                 links.append('vmess://' + base64.b64encode(json.dumps(vm).encode()).decode())
             elif kind == 'hysteria2':
-                query = urllib.parse.urlencode({'sni': host, 'insecure': '0', 'pinSHA256': fingerprint})
+                # Some URI importers turn pinSHA256 into insecure=true and then lose the pin.
+                # v2rayn.txt / full profiles carry the CA; generic links stay strict PKI only.
+                query = urllib.parse.urlencode({'sni': host, 'insecure': '0'})
                 links.append('hysteria2://' + credentials['password'] + '@' + uri_host + ':' + str(port) + '/?' + query + '#hysteria2')
             elif kind == 'tuic':
                 outbound['tls']['alpn'] = ['h3']
@@ -145,7 +147,8 @@ def export_clients(root, state, config):
     # JSON is a YAML subset; avoids a dependency and ambiguous YAML quoting.
     write_private(root / 'clmi.yaml', json.dumps(mihomo, indent=2) + '\n')
     write_private(root / 'jhsub.txt', base64.b64encode(('\n'.join(links) + '\n').encode()).decode() + '\n')
-    write_private(root / 'IMPORT-NOTES.txt', 'Prefer the pinned sbox.json / clmi.yaml profiles. ALL self-signed TLS URI imports (including Hysteria2 with pinSHA256) require manual certificate trust; do not enable insecure verification. VMess without TLS should be placed behind a trusted TLS reverse proxy. Do not publish this directory.\n')
+    export_v2rayn(root, client)
+    write_private(root / 'IMPORT-NOTES.txt', 'v2rayN 7.24.8: copy ALL lines of v2rayn.txt and import from clipboard (Ctrl+V); select the new nodes, not old imports. It embeds certificate trust and selects sing-box. Mihomo: clmi.yaml. sing-box 1.14: sbox.json. jhsub.txt contains GENERIC URI links, NOT a universal ready-to-use subscription: self-signed TLS requires manual per-node certificate trust. Never enable insecure verification. VMess without TLS is only for a trusted TLS reverse proxy. Keep these files private.\n')
 
 
 def initialize(root, binary, host):

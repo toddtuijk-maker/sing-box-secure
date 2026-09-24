@@ -14,6 +14,15 @@ binary digests, no blanket firewall/DNS/SELinux changes, owned NAT chain only,
 strict TLS exports, protected HTTPS subscriptions, narrower GitLab credentials,
 configuration checks, process supervision and bounded subscription concurrency.
 
+v2rayN export: use v2rayn.txt (ConfigVersion 4, sing-box, embedded PEM, explicit
+AllowInsecure=false). Pinned 7.24.8 upstream importer/generator runs in CI;
+generated VMess/WS-VLESS/HY2/TUIC/AnyTLS outbounds are exercised with 1.13.21,
+including rejection of wrong TLS names. Generic URI files are not universally
+self-signed-ready. HY2 pinSHA256 is deliberately omitted from generic links:
+7.24.8 enables AllowInsecure for that parameter but its sing-box generator drops
+the pin. Never compensate by disabling certificate verification. No platform CA
+installation is required for the dedicated v2rayN format.
+
 Remaining limitations:
 
 - Linux legacy editors depend on generated line layout. Arbitrary formatting

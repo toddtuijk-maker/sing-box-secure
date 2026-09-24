@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <V2rayNSource Condition="'$(V2rayNSource)' == ''">../../test-artifacts/v2rayn-source</V2rayNSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(V2rayNSource)/v2rayN/ServiceLib/ServiceLib.csproj" />
+  </ItemGroup>
+</Project>
