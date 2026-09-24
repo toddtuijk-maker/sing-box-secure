@@ -1,4 +1,5 @@
 import importlib.util
+import base64
 import json
 import os
 from pathlib import Path
@@ -26,6 +27,33 @@ class PortableTests(unittest.TestCase):
             portable.initial_state('example.com', {'VLESS_PORT': '80'})
         with self.assertRaises(ValueError):
             portable.initial_state('example.com', {'VLESS_PORT': '41781'})
+        for port in ('0', '65536', 'bad', '41781'):
+            with self.assertRaises(ValueError):
+                portable.initial_state('example.com', {'VLESS_PUBLIC_PORT': port})
+
+    def test_nat_export_and_legacy_state(self):
+        state = portable.initial_state('192.0.2.1', {'VLESS_PORT': '12331', 'VLESS_PUBLIC_PORT': '40563',
+            'VLESS_WS_PORT': '12861', 'VLESS_WS_PUBLIC_PORT': '40511'})
+        state.update(private_key='private', public_key='public')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'cert.pem').write_text('test certificate')
+            config = portable.server_config(state, root)
+            self.assertEqual(config['inbounds'][0]['listen_port'], 12331)
+            with patch.object(portable, 'pem_fingerprint', return_value='a' * 64):
+                portable.export_clients(root, state, config)
+                outbounds = json.loads((root / 'sbox.json').read_text())['outbounds']
+                proxies = json.loads((root / 'clmi.yaml').read_text())['proxies']
+                for tag, expected in [('vless', 40563), ('vless-ws', 40511), ('vmess', 29687)]:
+                    self.assertEqual(next(x['server_port'] for x in outbounds if x['tag'] == tag), expected)
+                    self.assertEqual(next(x['port'] for x in proxies if x['name'] == tag), expected)
+                links = base64.b64decode((root / 'jhsub.txt').read_text()).decode()
+                self.assertIn('@192.0.2.1:40563?', links)
+                self.assertIn('@192.0.2.1:40511?', links)
+                del state['public_ports']
+                portable.export_clients(root, state, config)
+                links = base64.b64decode((root / 'jhsub.txt').read_text()).decode()
+                self.assertIn('@192.0.2.1:12331?', links)
 
     def test_independent_credentials(self):
         state = portable.initial_state('127.0.0.1', {})

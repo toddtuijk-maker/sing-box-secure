@@ -73,6 +73,10 @@ python3 portable.py --binary /absolute/path/sing-box --data ./data
 首次初始化变量：VLESS_PORT、VMESS_PORT、HYSTERIA2_PORT、TUIC_PORT、ANYTLS_PORT、可选 VLESS_WS_PORT，
 必须互不重复且在 1024–65535；VMESS_TLS=0 仅供可信 TLS 反代源站。新的 VLESS WS 入口始终 TLS。
 初始化变量**不会覆盖已有持久化配置**。修改前备份、运行内核 check、同步客户端。
+NAT 的公网端口与机内端口不同时，为对应协议增加 `VLESS_PUBLIC_PORT`、`VMESS_PUBLIC_PORT`、
+`HYSTERIA2_PUBLIC_PORT`、`TUIC_PUBLIC_PORT`、`ANYTLS_PUBLIC_PORT` 或 `VLESS_WS_PUBLIC_PORT`。
+例如 `VLESS_PORT=12331 VLESS_PUBLIC_PORT=40563`：服务端监听 12331，导出的客户端连接公网 40563。
+公网端口须互不重复且在 1–65535；不设置则沿用机内端口。此配置不会替代供应商面板的实际映射。
 普通前台进程异常退出后，由平台/服务管理器负责重新启动。
 
 ## 订阅与客户端

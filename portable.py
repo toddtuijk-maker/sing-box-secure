@@ -38,7 +38,11 @@ def initial_state(host, environment):
         ports['vless-ws'] = int(environment['VLESS_WS_PORT'])
     if any(not 1024 <= port <= 65535 for port in ports.values()) or len(set(ports.values())) != len(ports):
         raise ValueError('Distinct unprivileged ports in 1024-65535 required')
-    return {'host': parse_host(host), 'ports': ports,
+    public_ports = {kind: int(environment.get(kind.upper().replace('-', '_') + '_PUBLIC_PORT', port))
+                    for kind, port in ports.items()}
+    if any(not 1 <= port <= 65535 for port in public_ports.values()) or len(set(public_ports.values())) != len(public_ports):
+        raise ValueError('Distinct public ports in 1-65535 required')
+    return {'host': parse_host(host), 'ports': ports, 'public_ports': public_ports,
             'vless_uuid': str(uuid.uuid4()), 'vmess_uuid': str(uuid.uuid4()), 'tuic_uuid': str(uuid.uuid4()),
             'vless_ws_uuid': str(uuid.uuid4()), 'vless_ws_path': '/' + secrets.token_hex(24),
             'hysteria2_password': secrets.token_urlsafe(32), 'tuic_password': secrets.token_urlsafe(32),
@@ -91,7 +95,7 @@ def export_clients(root, state, config):
         kind = inbound['type']
         tag = inbound['tag'].removesuffix('-in')
         credentials = inbound['users'][0]
-        port = inbound['listen_port']
+        port = state.get('public_ports', {}).get(tag, inbound['listen_port'])
         outbound = {'type': kind, 'tag': tag, 'server': host, 'server_port': port, **credentials}
         proxy = {'name': tag, 'type': kind, 'server': host, 'port': port, 'udp': True, **credentials}
         if kind == 'vless' and 'reality' in inbound['tls']:
