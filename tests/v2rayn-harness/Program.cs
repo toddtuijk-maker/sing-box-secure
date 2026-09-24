@@ -3,6 +3,7 @@
 using System.Reflection;
 using ServiceLib.Common;
 using ServiceLib.Enums;
+using ServiceLib.Handler;
 using ServiceLib.Handler.Fmt;
 using ServiceLib.Models.Configs;
 using ServiceLib.Models.CoreConfigs;
@@ -16,10 +17,20 @@ if (profiles.Count != lines.Split('\n', StringSplitOptions.RemoveEmptyEntries).L
 var output = new List<Outbound4Sbox>();
 foreach (var node in profiles)
 {
-    if (!node.IsValid() || node.CoreType != ECoreType.sing_box || node.GetAllowInsecure())
-        throw new Exception("Invalid node or insecure import");
     var config = new Config { CoreBasicItem = new(), HysteriaItem = new(),
         Mux4SboxItem = new(), GrpcItem = new() };
+    // Same normalization used by AddBatchServers4InnerUri, with persistence disabled.
+    // ProfileExManager is deliberately not initialized: no database is opened.
+    var status = node.ConfigType switch {
+        EConfigType.VMess => await ConfigHandler.AddVMessServer(config, node, false),
+        EConfigType.VLESS => await ConfigHandler.AddVlessServer(config, node, false),
+        EConfigType.Hysteria2 => await ConfigHandler.AddHysteria2Server(config, node, false),
+        EConfigType.TUIC => await ConfigHandler.AddTuicServer(config, node, false),
+        EConfigType.Anytls => await ConfigHandler.AddAnytlsServer(config, node, false),
+        _ => throw new Exception("Unexpected protocol")
+    };
+    if (status != 0 || !node.IsValid() || node.CoreType != ECoreType.sing_box || node.GetAllowInsecure())
+        throw new Exception("Invalid node or insecure import after normalization");
     var service = new CoreConfigSingboxService(new CoreConfigContext {
         Node = node, RunCoreType = ECoreType.sing_box, AppConfig = config });
     var method = typeof(CoreConfigSingboxService).GetMethod("BuildProxyServer", BindingFlags.Instance | BindingFlags.NonPublic)
